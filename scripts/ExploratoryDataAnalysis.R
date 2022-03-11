@@ -26,4 +26,13 @@ tidy.listings <- listings %>%
                                              "%d/%m/%Y")) %>%
   extract(Categoria, c("Categoria", "Quartos"), "[HOU]*([A-Z]+)([0-9])*Q*",
           convert=TRUE) %>%
-  mutate(Categoria=as.factor(Categoria))
+  mutate(Categoria=as.factor(Categoria)) %>%
+  select(-c("Hotel")) %>%
+  mutate(Categoria=fct_collapse(Categoria, TOP=c("TOP", "TOPM")))
+
+tidy.daily.revenue <- daily.revenue %>%
+  select(-c("occupancy", "blocked", "revenue")) %>%
+  mutate(across(-c("listing"), as.character)) %>%
+  mutate(last_offered_price=parse_double_with_comma(last_offered_price)) %>%
+  mutate(across(contains("date"), function(x){as.Date(parse_datetime(x))})) %>%
+  mutate(reservation_advance=date - creation_date)
