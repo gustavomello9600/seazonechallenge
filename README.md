@@ -1,2 +1,2 @@
-# seazonechallenge
-Seazone tecnical challenge for a Junior Data Scientist position
+# Seazone Challenge
+Seazone tecnical challenge proposed for a Junior Data Scientist position
