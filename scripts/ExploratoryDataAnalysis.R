@@ -27,7 +27,7 @@ tidy.listings <- listings %>%
   extract(Categoria, c("Categoria", "Quartos"), "[HOU]*([A-Z]+)([0-9])*Q*",
           convert=TRUE) %>%
   mutate(Categoria=as.factor(Categoria)) %>%
-  select(-c("Hotel", "Endereço")) %>%
+  select(-c("Endereço")) %>%
   mutate(Categoria=fct_collapse(Categoria, TOP=c("TOP", "TOPM")))
 
 tidy.daily.revenue <- daily.revenue %>%
@@ -38,7 +38,6 @@ tidy.daily.revenue <- daily.revenue %>%
   mutate(reservation_advance=date - creation_date)
 
 listings.daily.revenue <- tidy.daily.revenue %>%
-  filter(last_offered_price > 0) %>%
   left_join(tidy.listings, by=c("listing" = "Código")) %>%
   mutate(revenue=last_offered_price*Comissão) %>%
   mutate(across(Travesseiros, ~ifelse(is.na(.),
@@ -60,4 +59,11 @@ tidy.daily.revenue %>%
   ggplot(aes(x=date, y=last_offered_price)) +
   geom_point()
 
+# Answers first challenge question
+listings.daily.revenue %>%
+  filter(date >= ymd("2022-03-04"), date <= ymd("2022-03-31"),
+         Categoria == "MASTER",
+         Localização == "JUR") %>%
+  summarise(mean_price=mean(last_offered_price), mean_revenue=mean(revenue))
+# mean_price: 535; mean_revenue:107
 
