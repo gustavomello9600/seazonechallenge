@@ -172,3 +172,4 @@ p <- price.data %>%
   group_by(date) %>%
   summarise(predicted.revenue=sum(predicted.price*Comissão))
 
+qplot(x=date, y=predicted.revenue, data=p,geom="line")
