@@ -15,8 +15,8 @@ parse_integer_with_comma <- function(x){
 
 # Prepares datasets to perform relevant analysis
 tidy.listings <- listings %>%
-  mutate(across(-c("Tipo", "Status", "Hotel", "Categoria", "Localização"),
-                as.character)) %>%
+  mutate(across(c("Tipo", "Status", "Hotel", "Categoria", "Localização"),
+                as.factor)) %>%
   mutate(across(c("Comissão", "Banheiros", "Taxa.de.Limpeza"),
                 parse_double_with_comma)) %>%
   mutate(Taxa.de.Limpeza=na_if(Taxa.de.Limpeza, 0)) %>%
@@ -32,6 +32,7 @@ tidy.listings <- listings %>%
 
 tidy.daily.revenue <- daily.revenue %>%
   select(-c("occupancy", "blocked", "revenue")) %>%
+  mutate(listing=as.factor(listing)) %>%
   mutate(across(-c("listing"), as.character)) %>%
   mutate(last_offered_price=parse_double_with_comma(last_offered_price)) %>%
   mutate(across(contains("date"), function(x){as_date(parse_datetime(x))})) %>%
