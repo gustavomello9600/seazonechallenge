@@ -16,8 +16,8 @@ library(lubridate)
 ## Data Loading
 ```{r loading}
 cwd <- getwd()
-listings <- as_tibble(read.csv(paste0(cwd, "/../data/listings-challenge.csv")))
-daily.revenue <- as_tibble(read.csv(paste0(cwd, "/../data/daily_revenue-challenge.csv")))
+listings <- as_tibble(read.csv(paste0(cwd, "/../data/input/listings-challenge.csv")))
+daily.revenue <- as_tibble(read.csv(paste0(cwd, "/../data/input/daily_revenue-challenge.csv")))
 ```
 
 ## Data Cleansing
@@ -70,6 +70,7 @@ daily.revenue.listings <- tidy.daily.revenue %>%
   mutate(comission=last_offered_price*Comissão)
 
 daily.revenue.listings
+write_csv(daily.revenue.listings, paste0(cwd, "/../data/output/agreggated_data.csv"))
 ```
 
 # Exploratory Data Analysis
@@ -84,7 +85,8 @@ unique.listings[-which(unique.listings %in% tidy.listings$Código)]
 ```
 Indeed, checking the TST001 rows in daily.revenue.listings yelds:
 ```{r TST001rows}
-daily.revenue.listings[which(daily.revenue.listings$listing == "TST001"),]
+daily.revenue.listings[which(daily.revenue.listings$listing == "TST001"),] %>%
+  select(listing, setdiff(names(tidy.listings), c("Código")))
 ```
 Since 0 revenue is made from this listing, it is safe to drop its rows without compromising.
 ```{r drop_rows}

@@ -375,8 +375,8 @@ pre code {
 <div id="data-loading" class="section level2">
 <h2>Data Loading</h2>
 <pre class="r"><code>cwd &lt;- getwd()
-listings &lt;- as_tibble(read.csv(paste0(cwd, &quot;/../data/listings-challenge.csv&quot;)))
-daily.revenue &lt;- as_tibble(read.csv(paste0(cwd, &quot;/../data/daily_revenue-challenge.csv&quot;)))</code></pre>
+listings &lt;- as_tibble(read.csv(paste0(cwd, &quot;/../data/input/listings-challenge.csv&quot;)))
+daily.revenue &lt;- as_tibble(read.csv(paste0(cwd, &quot;/../data/input/daily_revenue-challenge.csv&quot;)))</code></pre>
 </div>
 <div id="data-cleansing" class="section level2">
 <h2>Data Cleansing</h2>
@@ -486,6 +486,7 @@ daily.revenue.listings</code></pre>
 ## #   Sofá.Cama.Solteiro &lt;int&gt;, Travesseiros &lt;int&gt;, Banheiros &lt;dbl&gt;,
 ## #   Taxa.de.Limpeza &lt;dbl&gt;, Capacidade &lt;int&gt;, Hotel &lt;fct&gt;,
 ## #   Data.Inicial.do.contrato &lt;date&gt;, Status &lt;fct&gt;, Tipo &lt;fct&gt;, comission &lt;dbl&gt;</code></pre>
+<pre class="r"><code>write_csv(daily.revenue.listings, paste0(cwd, &quot;/../data/output/agreggated_data.csv&quot;))</code></pre>
 </div>
 </div>
 <div id="exploratory-data-analysis" class="section level1">
@@ -517,26 +518,25 @@ listings.csv</p>
 unique.listings[-which(unique.listings %in% tidy.listings$Código)]</code></pre>
 <pre><code>## [1] &quot;TST001&quot;</code></pre>
 <p>Indeed, checking the TST001 rows in daily.revenue.listings yelds:</p>
-<pre class="r"><code>daily.revenue.listings[which(daily.revenue.listings$listing == &quot;TST001&quot;),]</code></pre>
-<pre><code>## # A tibble: 902 × 26
-##    listing date       last_offered_price occupancy revenue blocked creation_date
-##    &lt;chr&gt;   &lt;date&gt;                  &lt;dbl&gt;     &lt;dbl&gt;   &lt;dbl&gt;   &lt;int&gt; &lt;date&gt;       
-##  1 TST001  2021-04-17                  0         1       0       1 2021-04-16   
-##  2 TST001  2021-04-18                  0         1       0       1 2021-04-16   
-##  3 TST001  2021-04-19                  0         0       0       0 NA           
-##  4 TST001  2021-04-20                  0         0       0       0 NA           
-##  5 TST001  2021-04-21                  0         0       0       0 NA           
-##  6 TST001  2021-04-22                  0         0       0       0 NA           
-##  7 TST001  2021-04-23                  0         0       0       0 NA           
-##  8 TST001  2021-04-24                  0         0       0       0 NA           
-##  9 TST001  2021-04-25                  0         0       0       0 NA           
-## 10 TST001  2021-04-26                  0         0       0       0 NA           
-## # … with 892 more rows, and 19 more variables: reservation_advance &lt;drtn&gt;,
-## #   Localização &lt;fct&gt;, Categoria &lt;fct&gt;, Quartos &lt;int&gt;, Comissão &lt;dbl&gt;,
-## #   Cama.Casal &lt;int&gt;, Cama.Solteiro &lt;int&gt;, Cama.Queen &lt;int&gt;, Cama.King &lt;int&gt;,
-## #   Sofá.Cama.Solteiro &lt;int&gt;, Travesseiros &lt;int&gt;, Banheiros &lt;dbl&gt;,
-## #   Taxa.de.Limpeza &lt;dbl&gt;, Capacidade &lt;int&gt;, Hotel &lt;fct&gt;,
-## #   Data.Inicial.do.contrato &lt;date&gt;, Status &lt;fct&gt;, Tipo &lt;fct&gt;, comission &lt;dbl&gt;</code></pre>
+<pre class="r"><code>daily.revenue.listings[which(daily.revenue.listings$listing == &quot;TST001&quot;),] %&gt;%
+  select(listing, setdiff(names(tidy.listings), c(&quot;Código&quot;)))</code></pre>
+<pre><code>## # A tibble: 902 × 18
+##    listing Localização Categoria Quartos Comissão Cama.Casal Cama.Solteiro
+##    &lt;chr&gt;   &lt;fct&gt;       &lt;fct&gt;       &lt;int&gt;    &lt;dbl&gt;      &lt;int&gt;         &lt;int&gt;
+##  1 TST001  &lt;NA&gt;        &lt;NA&gt;           NA       NA         NA            NA
+##  2 TST001  &lt;NA&gt;        &lt;NA&gt;           NA       NA         NA            NA
+##  3 TST001  &lt;NA&gt;        &lt;NA&gt;           NA       NA         NA            NA
+##  4 TST001  &lt;NA&gt;        &lt;NA&gt;           NA       NA         NA            NA
+##  5 TST001  &lt;NA&gt;        &lt;NA&gt;           NA       NA         NA            NA
+##  6 TST001  &lt;NA&gt;        &lt;NA&gt;           NA       NA         NA            NA
+##  7 TST001  &lt;NA&gt;        &lt;NA&gt;           NA       NA         NA            NA
+##  8 TST001  &lt;NA&gt;        &lt;NA&gt;           NA       NA         NA            NA
+##  9 TST001  &lt;NA&gt;        &lt;NA&gt;           NA       NA         NA            NA
+## 10 TST001  &lt;NA&gt;        &lt;NA&gt;           NA       NA         NA            NA
+## # … with 892 more rows, and 11 more variables: Cama.Queen &lt;int&gt;,
+## #   Cama.King &lt;int&gt;, Sofá.Cama.Solteiro &lt;int&gt;, Travesseiros &lt;int&gt;,
+## #   Banheiros &lt;dbl&gt;, Taxa.de.Limpeza &lt;dbl&gt;, Capacidade &lt;int&gt;, Hotel &lt;fct&gt;,
+## #   Data.Inicial.do.contrato &lt;date&gt;, Status &lt;fct&gt;, Tipo &lt;fct&gt;</code></pre>
 <p>Since 0 revenue is made from this listing, it is safe to drop its
 rows without compromising.</p>
 <pre class="r"><code>sum(daily.revenue.listings[which(daily.revenue.listings$listing == &quot;TST001&quot;),]$revenue)</code></pre>
