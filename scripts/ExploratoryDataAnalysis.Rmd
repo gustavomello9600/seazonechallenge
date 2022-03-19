@@ -1,0 +1,105 @@
+---
+title: "Exploratory Data Analysis"
+author: "Gustavo Mello"
+date: '2022-03-19'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+library(tidyverse)
+library(lubridate)
+```
+
+# Data Loading and Cleansing
+
+## Data Loading
+```{r loading}
+cwd <- getwd()
+listings <- as_tibble(read.csv(paste0(cwd, "/../data/listings-challenge.csv")))
+daily.revenue <- as_tibble(read.csv(paste0(cwd, "/../data/daily_revenue-challenge.csv")))
+```
+
+## Data Cleansing
+The functions below, as well as the dplyr verbs, were carefully chosen through experimentation to get the data to present itself in useful formats respecting the tidy data standard.
+
+### listings-challenge.csv noteworthy transformations
+Category and number of rooms are separated so it is possible to analyse these predictors individually. Address column is dropped since it is unstructured data which signal is assumed to be captured by Localization variable. The strange "TOPM" category merges with "TOP" category.
+
+### daily_revenue-challenge.csv noteworthy transformations
+Reservation advance variable introduced as it is regarded as a key metric
+
+```{r cleansing}
+# Auxiliary cleaning functions
+parse_double_with_comma <- function(x){
+  parse_number(x, locale=locale(decimal_mark=","))
+}
+parse_integer_with_comma <- function(x){
+  as.integer(parse_double_with_comma(x))
+}
+
+# Prepares datasets to perform relevant analysis
+tidy.listings <- listings %>%
+  mutate(across(c("Tipo", "Status", "Hotel", "Categoria", "Localização"),
+                as.factor)) %>%
+  mutate(across(c("Comissão", "Banheiros", "Taxa.de.Limpeza"),
+                parse_double_with_comma)) %>%
+  mutate(across(c(contains("Cama"), "Travesseiros", "Capacidade"),
+                parse_integer_with_comma)) %>%
+  mutate(Data.Inicial.do.contrato=dmy(Data.Inicial.do.contrato)) %>%
+  extract(Categoria, c("Categoria", "Quartos"), "[HOU]*([A-Z]+)([0-9])*Q*",
+          convert=TRUE) %>%
+  mutate(Categoria=as.factor(Categoria)) %>%
+  select(-c("Endereço")) %>%
+  mutate(Categoria=fct_collapse(Categoria, TOP=c("TOP", "TOPM")))
+
+tidy.daily.revenue <- daily.revenue %>%
+  mutate(listing=as.factor(listing)) %>%
+  mutate(across(contains("date"), ~as_date(parse_datetime(.)))) %>%
+  mutate(reservation_advance=date - creation_date)
+
+tidy.listings
+tidy.daily.revenue
+```
+
+## Data Agreggation
+In order to train predictive models, joining the two datasets is needed.
+```{r agreggation}
+daily.revenue.listings <- tidy.daily.revenue %>%
+  left_join(tidy.listings, by=c("listing" = "Código")) %>%
+  mutate(comission=last_offered_price*Comissão)
+
+daily.revenue.listings
+```
+
+# Exploratory Data Analysis
+## Check for NAs
+```{r na_check}
+sapply(daily.revenue.listings, function(x) sum(is.na(x)))
+```
+The NA count suggests there are listings in daily_revenue.csv not in listings.csv
+```{r listings_not_in_daily_revenue}
+unique.listings <- as.character(unique(tidy.daily.revenue$listing))
+unique.listings[-which(unique.listings %in% tidy.listings$Código)]
+```
+Indeed, checking the TST001 rows in daily.revenue.listings yelds:
+```{r TST001rows}
+daily.revenue.listings[which(daily.revenue.listings$listing == "TST001"),]
+```
+Since 0 revenue is made from this listing, it is safe to drop its rows without compromising.
+```{r drop_rows}
+sum(daily.revenue.listings[which(daily.revenue.listings$listing == "TST001"),]$revenue)
+daily.revenue.listings <- filter(daily.revenue.listings, listing != "TST001")
+```
+
+## Comission earned across time
+```{r comission}
+daily.revenue.listings %>%
+  mutate(comission=revenue*Comissão) %>%
+  select(date, comission) %>%
+  group_by(date) %>%
+  summarise(comission=sum(comission)) %>%
+  ggplot(aes(x=date, y=comission)) +
+  geom_line()
+```
+

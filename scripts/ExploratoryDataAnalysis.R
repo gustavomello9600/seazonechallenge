@@ -1,4 +1,5 @@
-library(tidyverse, lubridate)
+library(tidyverse)
+library(lubridate)
 
 # Loads datasets as tibbles
 cwd <- getwd()
@@ -31,16 +32,13 @@ tidy.listings <- listings %>%
   mutate(Categoria=fct_collapse(Categoria, TOP=c("TOP", "TOPM")))
 
 tidy.daily.revenue <- daily.revenue %>%
-  select(-c("occupancy", "blocked", "revenue")) %>%
   mutate(listing=as.factor(listing)) %>%
-  mutate(across(-c("listing"), as.character)) %>%
-  mutate(last_offered_price=parse_double_with_comma(last_offered_price)) %>%
-  mutate(across(contains("date"), function(x){as_date(parse_datetime(x))})) %>%
+  mutate(across(contains("date"), ~as_date(parse_datetime(.)))) %>%
   mutate(reservation_advance=date - creation_date)
 
 listings.daily.revenue <- tidy.daily.revenue %>%
   left_join(tidy.listings, by=c("listing" = "Código")) %>%
-  mutate(revenue=last_offered_price*Comissão) %>%
+  mutate(comission=last_offered_price*Comissão) %>%
   mutate(across(Travesseiros, ~ifelse(is.na(.),
                                       2*(Cama.Casal + Cama.Queen + Cama.King)
                                       + 1*(Cama.Solteiro + Sofá.Cama.Solteiro),
@@ -48,10 +46,10 @@ listings.daily.revenue <- tidy.daily.revenue %>%
 
 # Plots total revenue across time
 listings.daily.revenue %>%
-  select(date, revenue) %>%
+  select(date, comission) %>%
   group_by(date) %>%
-  summarise(revenue=sum(revenue)) %>%
-  ggplot(aes(x=date, y=revenue)) +
+  summarise(comission=sum(comission)) %>%
+  ggplot(aes(x=date, y=comission)) +
   geom_point() +
   geom_smooth()
 
