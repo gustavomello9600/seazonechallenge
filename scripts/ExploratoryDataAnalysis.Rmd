@@ -9,6 +9,9 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
 library(tidyverse)
 library(lubridate)
+library(bizdays)
+library(xgboost)
+library(fastDummies)
 ```
 
 # Data Loading and Cleansing
@@ -118,3 +121,91 @@ It is relevant to notice that all entries were generated up to a date:
 max(daily.revenue.listings$creation_date, na.rm=TRUE)
 ```
 As a consequence, all revenue posterior to it (blue vertical line) is not yet consolidated.
+
+## Understanding key variables influencing revenue
+
+A log transform is applied in order to best account for variation scale in revenue variable.
+```{r revenue_made_data}
+revenue.made.data <- daily.revenue.listings %>%
+  # Feature engineering applied here
+  mutate(is.weekend = timeDate::isWeekend(date),
+         is.holiday = date %in% holidaysANBIMA) %>%
+  filter(occupancy==1, blocked==0) %>%
+  # Adjusts scale to enhance model fitting
+  mutate(log.revenue = log(revenue)) %>%
+  # Ignores redundant or not relevant predictors
+  select(-c(last_offered_price, listing, date, occupancy, blocked, Comissão,
+            creation_date, Data.Inicial.do.contrato, Travesseiros, Status,
+            comission, revenue))
+```
+
+### Comparing revenue against log(revenue) distributions
+```{r}
+par(mfrow=c(1, 2))
+
+plot(density(exp(revenue.made.data$log.revenue)), main="Revenue")
+plot(density(revenue.made.data$log.revenue), main="log(Revenue)")
+```
+
+
+
+### Checking for NAs
+```{r na_check_regression}
+sapply(revenue.made.data, function(x) sum(is.na(x)))
+```
+```{r examine_NAs}
+revenue.made.data.missing.rooms <- revenue.made.data[
+  which(is.na(revenue.made.data$Quartos)),
+]
+all(revenue.made.data.missing.rooms$Hotel == "Sim")
+```
+Since some variables behave always differently given the listing is or is not inside a hotel, two models are made to investigate predictor importance on both occasions.
+
+### Hotel and No Hotel split
+```{r hotel_split}
+revenue.made.data.hotel <- revenue.made.data %>%
+  filter(Hotel == "Sim") %>%
+  select(-c(Hotel, Quartos, Taxa.de.Limpeza, Tipo))
+
+revenue.made.data.no.hotel <- revenue.made.data %>%
+  filter(Hotel == "Não") %>%
+  mutate(log.Taxa.de.Limpeza = log(Taxa.de.Limpeza)) %>%
+  select(-c(Hotel, Taxa.de.Limpeza))
+
+head(revenue.made.data.hotel)
+head(revenue.made.data.no.hotel)
+```
+
+### Best subset selection for linear regression
+```{r best_subset}
+summary(step(lm(log.revenue ~ ., data=revenue.made.data.hotel), trace=0))
+summary(step(lm(log.revenue ~ ., data=revenue.made.data.no.hotel), trace=0))
+```
+The low values for R² and large residuals standard errors suggests that a linear regression model is not well suited to the data at hand.
+
+### Boosted Trees Regression (Xtreme Gradient Boosting)
+Adopting a more robust model, proven to work in similar cases, yields:
+```{r xgboost}
+hotel.matrix <- as.matrix(revenue.made.data.hotel %>%
+                            select(-c(log.revenue)) %>%
+                            mutate(reservation_advance=as.numeric(reservation_advance)) %>%
+                            dummy_cols(remove_selected_columns = TRUE)) 
+model.hotel <- xgboost(data=hotel.matrix,
+                       label=revenue.made.data.hotel$log.revenue,
+                       nrounds=20,
+                       max.depth=6)
+
+xgb.plot.importance(xgb.importance(model=model.hotel))
+
+no.hotel.matrix <- as.matrix(revenue.made.data.no.hotel %>%
+                                select(-c(log.revenue)) %>%
+                            mutate(reservation_advance=as.numeric(reservation_advance)) %>%
+                            dummy_cols(remove_selected_columns = TRUE)) 
+model.no.hotel <- xgboost(data=no.hotel.matrix,
+                       label=revenue.made.data.no.hotel$log.revenue,
+                       nrounds=20,
+                       max.depth=6)
+
+xgb.plot.importance(xgb.importance(model=model.no.hotel))
+```
+
