@@ -67,7 +67,8 @@ In order to train predictive models, joining the two datasets is needed.
 ```{r agreggation}
 daily.revenue.listings <- tidy.daily.revenue %>%
   left_join(tidy.listings, by=c("listing" = "Código")) %>%
-  mutate(comission=last_offered_price*Comissão)
+  mutate(comission=last_offered_price*Comissão,
+         listing=as.factor(listing))
 
 daily.revenue.listings
 write_csv(daily.revenue.listings, paste0(cwd, "/../data/output/agreggated_data.csv"))
@@ -83,7 +84,7 @@ The NA count suggests there are listings in daily_revenue.csv not in listings.cs
 unique.listings <- as.character(unique(tidy.daily.revenue$listing))
 unique.listings[-which(unique.listings %in% tidy.listings$Código)]
 ```
-Indeed, checking the TST001 rows in daily.revenue.listings yelds:
+Indeed, checking the TST001 rows in daily.revenue.listings yields:
 ```{r TST001rows}
 daily.revenue.listings[which(daily.revenue.listings$listing == "TST001"),] %>%
   select(listing, setdiff(names(tidy.listings), c("Código")))
@@ -102,6 +103,18 @@ daily.revenue.listings %>%
   group_by(date) %>%
   summarise(comission=sum(comission)) %>%
   ggplot(aes(x=date, y=comission)) +
-  geom_line()
+  geom_line() +
+  geom_vline(xintercept=as.numeric(ymd("2022-03-15")), colour="blue")
 ```
 
+The COVID-19 pandemic effects can be seen clearly in the plot. To investigate it a little further:
+```{r covid_effects}
+daily.revenue.listings %>%
+  filter(date >= "2020-01-01", date <= "2020-12-31")
+```
+
+It is relevant to notice that all entries were generated up to a date:
+```{r last_date}
+max(daily.revenue.listings$creation_date, na.rm=TRUE)
+```
+As a consequence, all revenue posterior to it (blue vertical line) is not yet consolidated.
