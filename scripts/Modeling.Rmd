@@ -1,0 +1,216 @@
+---
+title: "Data Modeling"
+author: "Gustavo Mello"
+date: '2022-03-27'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(tsibble)
+library(fable)
+library(feasts)
+```
+
+# Data loading and preparing
+```{r load}
+cwd <- getwd()
+daily.revenue.listings <- read_csv(paste0(cwd, "/../data/output/daily_revenue_listings.csv"))
+```
+
+```{r prepare}
+daily.comissions <- daily.revenue.listings %>%
+  select(date, comission) %>%
+  group_by(date) %>%
+  summarise(comission=sum(comission)) %>%
+  as_tsibble(index=date) %>%
+  filter(date<="2022-03-15") %>%
+  mutate(log.comission=log(comission + 1)) %>%
+  select(-c(comission))
+
+autoplot(daily.comissions)
+
+monthly.comissions <- daily.revenue.listings %>%
+  select(date, comission) %>%
+  mutate(date=yearmonth(date)) %>%
+  group_by(date) %>%
+  summarise(comission=sum(comission)) %>%
+  as_tsibble(index=date) %>%
+  filter_index(~"2022-02") %>%
+  mutate(log.comission=log(comission + 1)) %>%
+  select(-c(comission))
+
+autoplot(monthly.comissions)
+```
+
+# Model 1: Monthly Data
+## Exponential Smoothing (ETS method)
+```{r model_monthly}
+fit <- monthly.comissions %>%
+  model(auto=ETS(log.comission),
+        season=ETS(log.comission ~ trend("A") + season("A")))
+
+report(fit)
+
+components(fit) %>%
+  autoplot()
+
+fit %>%
+  forecast(h = 10) %>%
+  autoplot(monthly.comissions) +
+  facet_wrap(vars(.model))
+```
+
+## ARIMA model
+```{r}
+monthly.comissions %>%
+  gg_tsdisplay(difference(log.comission, 12) %>% difference () %>% difference(), plot_type='partial')
+
+fit <- monthly.comissions %>%
+  model(manual   = ARIMA(log.comission ~ pdq(0, 2, 0) + PDQ(0, 1, 0)),
+        stepwise = ARIMA(log.comission),
+        search   = ARIMA(log.comission, stepwise=FALSE),
+        auto     = ARIMA(log.comission, stepwise=FALSE, approx=FALSE))
+
+report(fit %>% select(auto))
+
+fit %>%
+  forecast(h=10) %>%
+  autoplot(monthly.comissions) +
+  facet_wrap(vars(.model))
+```
+
+## Cross-validation to select best fit
+```{r cross_validate}
+monthly.comissions %>%
+  filter_index(~ "2022-01") %>%
+  stretch_tsibble(.init = 10) %>%
+  model(
+    ETS(log.comission),
+    ARIMA(log.comission)
+  ) %>%
+  forecast(h = 1) %>%
+  accuracy(monthly.comissions) %>%
+  select(.model, RMSE:MAPE)
+```
+## Arima predictions in log(comissions)
+```{r final_model_predictions}
+monthly.comissions.forecast <- monthly.comissions %>%
+  model(ARIMA(log.comission)) %>%
+  forecast(h=10)
+
+monthly.comissions.forecast %>%
+  autoplot(monthly.comissions)
+
+monthly.comissions.forecasted <- monthly.comissions.forecast %>%
+  hilo() %>%
+  unpack_hilo(c("80%", "95%")) %>%
+  mutate(across(-(.model:log.comission), ~exp(.))) %>%
+  select(-c(.model, log.comission)) %>%
+  rename(forecast=.mean)
+
+monthly.comissions.actual.and.forecasted <- monthly.comissions %>%
+  mutate(comission=exp(log.comission)) %>%
+  select(-c(log.comission)) %>%
+  full_join(monthly.comissions.forecasted, by=c("date"="date"))
+
+monthly.comissions.actual.and.forecasted
+
+monthly.comissions.actual.and.forecasted %>%
+  select(-contains("upper")) %>%
+  pivot_longer(!date, names_to="tipo", values_to="value") %>%
+  ggplot(aes(x=date, y=value, color=tipo)) +
+  geom_line()
+```
+
+```{r revenue_by_year}
+revenue_by_year <- monthly.comissions.actual.and.forecasted %>%
+  as_tibble() %>%
+  select(date, comission, forecast, "80%_lower", "80%_upper") %>%
+  rename(upper80="80%_upper", lower80="80%_lower") %>%
+  mutate(year=year(date)) %>%
+  group_by(year) %>%
+  summarise(realized=sum(comission, na.rm=TRUE),
+            forecasted_mean=sum(forecast, na.rm=TRUE),
+            upper80=sum(upper80, na.rm=TRUE),
+            lower80=sum(lower80, na.rm=TRUE))
+  
+revenue_by_year
+```
+
+## Log(comission) vs comission models comparison
+```{r log_vs_non_log}
+monthly.comissions.no.log <- daily.revenue.listings %>%
+  select(date, comission) %>%
+  mutate(date=yearmonth(date)) %>%
+  group_by(date) %>%
+  summarise(comission=sum(comission)) %>%
+  as_tsibble(index=date) %>%
+  filter_index(~"2022-02")
+  
+monthly.comissions.no.log %>%
+  filter_index(~ "2022-01") %>%
+  stretch_tsibble(.init = 10) %>%
+  model(
+    ETS(log(comission)),
+    ARIMA(log(comission)),
+    ETS(comission),
+    ARIMA(comission)
+  ) %>%
+  forecast(h = 1) %>%
+  accuracy(monthly.comissions.no.log) %>%
+  select(.model, RMSE:MAPE)
+```
+
+## ARIMA predictions
+```{r no_log_arima}
+monthly.comissions.forecast <- monthly.comissions.no.log %>%
+  model(ARIMA(comission)) %>%
+  forecast(h=10)
+
+monthly.comissions.forecast %>%
+  autoplot(monthly.comissions.no.log)
+
+monthly.comissions.forecasted <- monthly.comissions.forecast %>%
+  hilo() %>%
+  unpack_hilo(c("80%", "95%")) %>%
+  select(-c(.model, comission)) %>%
+  rename(forecast=.mean)
+
+monthly.comissions.actual.and.forecasted <- monthly.comissions.no.log %>%
+  full_join(monthly.comissions.forecasted, by=c("date"="date"))
+
+monthly.comissions.actual.and.forecasted
+
+monthly.comissions.actual.and.forecasted %>%
+  pivot_longer(!date, names_to="tipo", values_to="value") %>%
+  ggplot(aes(x=date, y=value, color=tipo)) +
+  geom_line()
+```
+
+```{r revenue_by_year_2}
+revenue_by_year <- monthly.comissions.actual.and.forecasted %>%
+  as_tibble() %>%
+  select(date, comission, forecast, "80%_lower", "80%_upper") %>%
+  rename(upper80="80%_upper", lower80="80%_lower") %>%
+  mutate(year=year(date)) %>%
+  group_by(year) %>%
+  summarise(realized=sum(comission, na.rm=TRUE),
+            forecasted_mean=sum(forecast, na.rm=TRUE),
+            upper80=sum(upper80, na.rm=TRUE),
+            lower80=sum(lower80, na.rm=TRUE)) %>%
+  mutate(total_lower=realized+lower80,
+         total=realized+forecasted_mean,
+         total_upper=realized+upper80)
+  
+revenue_by_year
+
+revenue_by_year %>%
+  mutate(year=year-2019) %>%
+  ggplot(aes(x=year, y=total, label=total)) +
+  geom_col() +
+  geom_text(vjust=-0.5) +
+  geom_smooth(method = "lm", formula = y ~ exp(x))
+```

@@ -74,7 +74,6 @@ daily.revenue.listings <- tidy.daily.revenue %>%
          listing=as.factor(listing))
 
 daily.revenue.listings
-write_csv(daily.revenue.listings, paste0(cwd, "/../data/output/agreggated_data.csv"))
 ```
 
 # Exploratory Data Analysis
@@ -207,5 +206,10 @@ model.no.hotel <- xgboost(data=no.hotel.matrix,
                        max.depth=6)
 
 xgb.plot.importance(xgb.importance(model=model.no.hotel))
+```
+# Export data to next step
+```{r next_step}
+write_csv(daily.revenue.listings,
+          paste0(cwd, "/../data/output/daily_revenue_listings.csv"))
 ```
 
