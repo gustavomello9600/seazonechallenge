@@ -230,8 +230,14 @@ monthly.comissions.forecast <- monthly.comissions %>%
   model(ARIMA(comission)) %>%
   forecast(h=10)
 
-monthly.comissions.forecast %>%
-  autoplot(monthly.comissions)
+revenue.forecast.plot <- monthly.comissions.forecast %>%
+  autoplot(monthly.comissions) +
+  scale_y_log10() +
+  labs("Revenue forecast",
+       x="Month",
+       y="Seazone Revenue (log scale)")
+
+revenue.forecast.plot
 
 monthly.comissions.forecasted <- monthly.comissions.forecast %>%
   hilo() %>%
@@ -242,7 +248,7 @@ monthly.comissions.forecasted <- monthly.comissions.forecast %>%
 monthly.comissions.actual.and.forecasted <- monthly.comissions %>%
   full_join(monthly.comissions.forecasted, by=c("date"="date"))
 
-revenue_by_year <- monthly.comissions.actual.and.forecasted %>%
+revenue.by.year <- monthly.comissions.actual.and.forecasted %>%
   as_tibble() %>%
   select(date, comission, forecast, "80%_lower", "80%_upper") %>%
   rename(upper80="80%_upper", lower80="80%_lower") %>%
@@ -256,9 +262,9 @@ revenue_by_year <- monthly.comissions.actual.and.forecasted %>%
          total=realized+forecasted_mean,
          total_upper=realized+upper80)
   
-revenue_by_year
+revenue.by.year
 
-revenue_by_year %>%
+revenue.by.year %>%
   mutate(year=year-2019) %>%
   ggplot(aes(x=year, y=total, label=format(total, digits=2))) +
   geom_col() +
@@ -285,9 +291,8 @@ ny.nights <- daily.revenue.listings %>%
          advance=as.numeric(creation_date-date),
          year=as.character(year(date)))
 
-ny.nights %>%
+percentage.by.advance.plot <- ny.nights %>%
   ggplot(aes(x=advance, y=percentage_until)) +
-  geom_area(aes(fill=year, alpha=0.1), position="identity") +
   geom_line(aes(color=year)) +
   scale_x_continuous("Days in advance",
                      limits = c(-100, 0)) +
@@ -298,6 +303,9 @@ ny.nights %>%
   geom_text(aes(-100, 0.1, label="10%", vjust = -1), data=data.frame()) +
   geom_text(aes(-100, 0.5, label="50%", vjust = -1), data=data.frame()) + 
   geom_text(aes(-100, 0.8, label="80%", vjust = -1), data=data.frame())
+
+(percentage.by.advance.plot
++ geom_area(aes(fill=year, alpha=0.1), position="identity"))
 ```
 ## Answers
 ```{r quantiles}
@@ -322,3 +330,30 @@ As uncovered in the EDA script, reservation advance, apart from the cleaning fee
 To set an optimal price is to reach an agreement between what is mutually interesting for both the business and its clients.
 
 Furthermore, a model that predicts the odds of selling a booking given the percentage of available listings for a particular date at a particular price may be used to maximize a revenue function through the price variable.
+
+```{r export_to_chart_studio, include=FALSE}
+library(plotly)
+
+Sys.setenv("plotly_username"="gustavomello9600")
+Sys.setenv("plotly_api_key"="VHt7xcCNVPRBHaf5j6Z4")
+
+p <- ggplotly(percentage.by.advance.plot, width=1200, height=600)
+api_create(p, filename = "r-area-plot-percentage-by-advance",
+           fileopt="overwrite", sharing="public")
+
+p <- ggplotly(monthly.comissions.actual.and.forecasted %>%
+                pivot_longer(!date, names_to="tipo", values_to="value") %>%
+                ggplot(aes(x=date, y=value, color=tipo)) +
+                geom_line() +
+                scale_y_log10() +
+                labs("Revenue forecast",
+                     x="Month",
+                     y="Seazone Revenue (log scale)"),
+              width=1200,
+              height=600)
+api_create(p, filename = "r-forecast-seazone-revenue",
+           fileopt="overwrite", sharing="public")
+
+
+```
+

@@ -201,16 +201,14 @@ cross.validate.for <- function(K){
 }
 ```
 
-```{r cross_validate_100}
-result100 <- cross.validate.for(100)
-```
-
 ```{r optimal_parameter}
 parameter_metrics <- results %>%
   mutate(K=sapply(results$.model,
                   function(x){
                     parse_integer(substring(x, first=5))
                   })) %>%
+  add_row(.model="K = 100", RMSE=98.63, MAE=77.58,
+          MPE=6.63, MAPE=38.10, K=100L) %>%
   add_row(.model="K = 100", RMSE=98.63, MAE=77.58,
           MPE=6.63, MAPE=38.10, K=100L) %>%
   add_row(.model="K = 60", RMSE=67.92, MAE=56.39,
@@ -225,6 +223,10 @@ parameter_metrics <- results %>%
           MPE=3.40, MAPE=27.61, K=65L) %>%
   add_row(.model="K = 75", RMSE=61.54, MAE=51.18,
           MPE=2.17, MAPE=25.34, K=75L) %>%
+  add_row(.model="K = 77", RMSE=65.98, MAE=55.84,
+          MPE=0.93, MAPE=27.39, K=77L) %>%
+  add_row(.model="K = 73", RMSE=64.54, MAE=53.98,
+          MPE=1.01, MAPE=26.69, K=73L) %>%
   arrange(K)
 
 parameter_metrics
@@ -236,7 +238,25 @@ parameter_metrics %>%
   geom_line() +
   geom_smooth(se=FALSE, linetype="dashed", size=0.5)
 ```
-```{r cross_validate_70}
-result0 <- cross.validate.for(70)
-result70
+```{r final_model}
+final.model <- reservations.daily.COVID.excluded %>%
+  model(dynamic_harmonic_regression(K=75, log_transform=TRUE))
 ```
+
+```{r final_forecast}
+final.model %>%
+  forecast(reservations.daily.COVID.excluded.new.data) %>%
+  autoplot(reservations.daily.COVID.excluded, level=80) +
+  labs("Daily Number of Reservations Forecast",
+       x="Day",
+       y="Reservations")
+
+final.model %>%
+  forecast(reservations.daily.COVID.excluded.new.data) %>%
+  autoplot(reservations.daily.COVID.excluded, level=80) +
+  labs("Daily Number of Reservations Forecast",
+       x="Day",
+       y="Reservations (log scale)") +
+  scale_y_log10()
+```
+
