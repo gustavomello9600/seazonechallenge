@@ -15,6 +15,7 @@ library(fable)
 library(feasts)
 library(xgboost)
 library(fastDummies)
+library(bizdays)
 library(ggdark)
 
 theme_set(dark_theme_gray())
@@ -231,7 +232,7 @@ monthly.comissions.forecast <- monthly.comissions %>%
   forecast(h=10)
 
 revenue.forecast.plot <- monthly.comissions.forecast %>%
-  autoplot(monthly.comissions) +
+  autoplot(monthly.comissions, level=80) +
   scale_y_log10() +
   labs("Revenue forecast",
        x="Month",
@@ -276,6 +277,56 @@ revenue.by.year %>%
 The predicted total revenue is in an 80% confidence interval ranging from R\$ 3.261.318,82 to R\$ 8.484.595,04 with expected value R\$ 5.872.956,93
 
 # Question 3
+### How many reservations should we expect to sell per day? Why?
+As thoroughly discussed over the Demand Modeling script, the expected number of reservations per day in 2022 can be estimated by a dynamic harmonic regression with 75 pairs of sine and cosine fourier harmonics, a dummy variable to distinguish between workdays and non-workdays and an ARMA error component.
+```{r demand_forecast}
+dynamic_harmonic_regression <- function(K, log_transform=FALSE){
+  K_weekly <- if (K > 3) {3} else {K}
+  
+  if(log_transform){
+    ARIMA(log(count) ~ PDQ(0, 0, 0)
+                       + fourier(K=K_weekly, period=7)
+                       + fourier(K=K, period=365.25)
+                       + is.workday)
+  } else{
+    ARIMA(count ~ PDQ(0, 0, 0)
+                  + fourier(K=K_weekly, period=7)
+                  + fourier(K=K, period=365.25)
+                  + is.workday)
+  }
+}
+
+reservations.daily <- daily.revenue.listings %>%
+  filter(date <= "2022-03-15", occupancy==1, blocked==0) %>%
+  select(date) %>%
+  group_by(date) %>%
+  summarise(count=n()) %>%
+  tsibble(index=date) %>%
+  fill_gaps(count=0, .full=TRUE) %>%
+  mutate(is.workday = !(timeDate::isWeekend(date)
+                        | (date %in% holidaysANBIMA)))
+
+reservations.daily.COVID.excluded <- reservations.daily %>%
+  filter_index("2021-01-01" ~ "2022-03-15")
+
+reservations.daily.COVID.excluded.new.data <- reservations.daily.COVID.excluded %>%
+  new_data(291L) %>% # predictions until 31-12-2022
+  mutate(is.workday = !(timeDate::isWeekend(date)
+                        | (date %in% holidaysANBIMA)))
+
+# Model training may take a little while
+final.model <- reservations.daily.COVID.excluded %>%
+  model(dynamic_harmonic_regression(K=75, log_transform=TRUE))
+
+demand.forecast.plot <- final.model %>%
+  forecast(reservations.daily.COVID.excluded.new.data) %>%
+  autoplot(reservations.daily.COVID.excluded, level=80) +
+  labs("Daily Number of Reservations Forecast",
+       x="Day",
+       y="Reservations (log scale)") +
+  scale_y_log10()
+```
+
 
 # Question 4
 ### At what time of the year should we expect to have sold 10% of our new year's night? And 50%? And 80%? How can this information be useful for pricing our listings?
@@ -331,7 +382,7 @@ To set an optimal price is to reach an agreement between what is mutually intere
 
 Furthermore, a model that predicts the odds of selling a booking given the percentage of available listings for a particular date at a particular price may be used to maximize a revenue function through the price variable.
 
-```{r export_to_chart_studio, include=FALSE}
+```{r export_to_chart_studio, eval=FALSE, include=FALSE}
 library(plotly)
 
 Sys.setenv("plotly_username"="gustavomello9600")
@@ -354,6 +405,9 @@ p <- ggplotly(monthly.comissions.actual.and.forecasted %>%
 api_create(p, filename = "r-forecast-seazone-revenue",
            fileopt="overwrite", sharing="public")
 
+# p <- ggplotly(revenue.forecast.plot, width=1200, height=600)
+# api_create(p, filename = "r-area-plot-percentage-by-advance",
+#            fileopt="overwrite", sharing="public")
 
 ```
 
