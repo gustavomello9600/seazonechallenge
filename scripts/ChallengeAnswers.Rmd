@@ -24,7 +24,8 @@ theme_set(dark_theme_gray())
 ```{r loading}
 # Imports dataset made in EDA script
 cwd <- getwd()
-daily.revenue.listings <- read_csv(paste0(cwd, "/../data/output/daily_revenue_listings.csv"))
+daily.revenue.listings <- read_csv(paste0(cwd,
+                                          "/../data/output/daily_revenue_listings.csv"))
 ```
 
 # Question 1
@@ -61,8 +62,12 @@ test <- comission.earned.data %>%
 
 
 # Linear model fitting
-linear.model.price <- lm(last_offered_price ~ month + Localização + Categoria + Quartos, train)
-linear.model.revenue <- lm(revenue ~ month + Localização + Categoria + Quartos, train)
+linear.model.price <- lm(last_offered_price ~ month + Localização 
+                                              + Categoria + Quartos,
+                         data=train)
+linear.model.revenue <- lm(revenue ~ month + Localização
+                                     + Categoria + Quartos,
+                           data=train)
 
 # XGBoost model fitting
 make.matrix.from <- function(data){
@@ -154,7 +159,7 @@ predict(xgboost.model.price, case.matrix)[case.index]   # 312.2011
 predict(linear.model.revenue, case.row)                 # 586.2073
 predict(xgboost.model.revenue, case.matrix)[case.index] # 312.2011
 ```
-Comparing predictions to actual data, we might see that a good estimate should be in between R$ 383,00 and R$ 531,64.
+Comparing predictions to actual data, we might see that a good estimate should be in between R\$ 383,00 and R\$ 531,64.
 ```{r comparison_with_actual_data, message=FALSE, warning=FALSE}
 (comparison <- comission.earned.data %>%
   filter(Localização=="JUR", month=="mar", Categoria=="MASTER") %>%
@@ -162,7 +167,7 @@ Comparing predictions to actual data, we might see that a good estimate should b
   summarise(avg_revenue=mean(revenue)))
 ```
 
-To get inside this interval, an average between XGBoost and Linear model is taken. Only one value is predicted since the models setted the same value for both revenue and price.
+To get inside this interval, an average between XGBoost and Linear model is taken. Only one value is predicted since the models set the same for both revenue and price.
 ```{r average_prediction}
 average.prediction <- mean(c(312.2011, 586.2073))
 average.prediction
@@ -198,7 +203,7 @@ RMSE(0.9*linear.predictions + 0.1*xgboost.predictions,
      filter_new_factors = TRUE)
 ```
 ## Answer
-Using the ensemble as final predictor:
+Using the ensemble with the least RMSE as final predictor:
 ```{r final_prediction}
 final.prediction.price <- 0.2*586.2073 + 0.8*312.2011
 # R$ 367,00
@@ -255,11 +260,65 @@ revenue_by_year
 
 revenue_by_year %>%
   mutate(year=year-2019) %>%
-  ggplot(aes(x=year, y=total, label=total)) +
+  ggplot(aes(x=year, y=total, label=format(total, digits=2))) +
   geom_col() +
   geom_text(vjust=-0.5) +
   geom_smooth(method = "lm", formula = y ~ exp(x))
 ```
 
 ## Answer
-The predicted total revenue is in an 80% confidence interval ranging from R\$ 3.261.318,82 to R\$ 8.484.595,04 with expected value R\$ 5.872.956,93	
+The predicted total revenue is in an 80% confidence interval ranging from R\$ 3.261.318,82 to R\$ 8.484.595,04 with expected value R\$ 5.872.956,93
+
+# Question 3
+
+# Question 4
+### At what time of the year should we expect to have sold 10% of our new year's night? And 50%? And 80%? How can this information be useful for pricing our listings?
+```{r ny_nights}
+ny.nights <- daily.revenue.listings %>%
+  filter(occupancy==1, blocked==0) %>%
+  select(date, creation_date) %>%
+  filter(day(date)==31, month(date)==12) %>%
+  group_by(date, creation_date) %>%
+  summarise(reservations=n()) %>%
+  group_by(date) %>%
+  mutate(percentage_until=cumsum(reservations)/sum(reservations),
+         advance=as.numeric(creation_date-date),
+         year=as.character(year(date)))
+
+ny.nights %>%
+  ggplot(aes(x=advance, y=percentage_until)) +
+  geom_area(aes(fill=year, alpha=0.1), position="identity") +
+  geom_line(aes(color=year)) +
+  scale_x_continuous("Days in advance",
+                     limits = c(-100, 0)) +
+  ylab("Percentage of new year's nights sold") +
+  geom_hline(yintercept = 0.1) +
+  geom_hline(yintercept = 0.5) +
+  geom_hline(yintercept = 0.8) +
+  geom_text(aes(-100, 0.1, label="10%", vjust = -1), data=data.frame()) +
+  geom_text(aes(-100, 0.5, label="50%", vjust = -1), data=data.frame()) + 
+  geom_text(aes(-100, 0.8, label="80%", vjust = -1), data=data.frame())
+```
+## Answers
+```{r quantiles}
+advances.by.year <- ny.nights %>%
+  group_by(year) %>%
+  summarise(ten=advance[which(percentage_until >= 0.1)][1],
+            fifty=advance[which(percentage_until >= 0.5)][1],
+            eighty=advance[which(percentage_until >= 0.8)][1])
+
+advances.by.year
+
+predicted.advances <- advances.by.year %>% select(ten:eighty) %>% colMeans
+predicted.dates <- as_date(sapply(predicted.advances, function(advance){
+  ymd("2022-12-31") + period(ceiling(advance), units="day")
+}))
+
+predicted.dates
+```
+
+As uncovered in the EDA script, reservation advance, apart from the cleaning fees when applied, is the most relevant predictor for a listing's last offered price. Pricing is considerably dependent on reservation advance since it carries a trade-off: on one hand, a costumer is willing to pay more for booking to a close date; on the other, there is a strong incentive to sell as many bookings as possible up to the target date.
+
+To set an optimal price is to reach an agreement between what is mutually interesting for both the business and its clients.
+
+Furthermore, a model that predicts the odds of selling a booking given the percentage of available listings for a particular date at a particular price may be used to maximize a revenue function through the price variable.
