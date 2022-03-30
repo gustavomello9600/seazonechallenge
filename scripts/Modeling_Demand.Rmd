@@ -132,6 +132,7 @@ fit.COVID.excluded %>%
     data = glance(fit))
 ```
 
+### K hyperparameter tuning
 ```{r plot_K}
 plot_K <- function(K=2){
   fit_test <- reservations.daily.COVID.excluded %>%
@@ -156,11 +157,11 @@ models <- reservations.daily.COVID.excluded %>%
   model(
     "K = 1"  = dynamic_harmonic_regression(K=1,  log_transform=TRUE),
     "K = 2"  = dynamic_harmonic_regression(K=2,  log_transform=TRUE),
-    "K = 5"  = dynamic_harmonic_regression(K=5,  log_transform=TRUE),
-    "K = 10" = dynamic_harmonic_regression(K=10, log_transform=TRUE),
-    "K = 20" = dynamic_harmonic_regression(K=20, log_transform=TRUE),
-    "K = 30" = dynamic_harmonic_regression(K=30, log_transform=TRUE),
-    "K = 50" = dynamic_harmonic_regression(K=50, log_transform=TRUE)
+    "K = 5"  = dynamic_harmonic_regression(K=5,  log_transform=TRUE)#, Cached
+    # "K = 10" = dynamic_harmonic_regression(K=10, log_transform=TRUE),
+    # "K = 20" = dynamic_harmonic_regression(K=20, log_transform=TRUE),
+    # "K = 30" = dynamic_harmonic_regression(K=30, log_transform=TRUE),
+    # "K = 50" = dynamic_harmonic_regression(K=50, log_transform=TRUE)
   )
 ```
 
@@ -207,8 +208,14 @@ parameter_metrics <- results %>%
                   function(x){
                     parse_integer(substring(x, first=5))
                   })) %>%
-  add_row(.model="K = 100", RMSE=98.63, MAE=77.58,
-          MPE=6.63, MAPE=38.10, K=100L) %>%
+  add_row(.model="K = 10", RMSE=82.92, MAE=64.47,
+          MPE=9.77, MAPE=31.11, K=10L) %>%
+  add_row(.model="K = 20", RMSE=91.61, MAE=74.54,
+          MPE=14.24, MAPE=35.70, K=20L) %>%
+  add_row(.model="K = 30", RMSE=96.51, MAE=77.95,
+          MPE=13.52, MAPE=37.41, K=30L) %>%
+  add_row(.model="K = 50", RMSE=81.98, MAE=65.69,
+          MPE=4.72, MAPE=31.93, K=50L) %>%
   add_row(.model="K = 100", RMSE=98.63, MAE=77.58,
           MPE=6.63, MAPE=38.10, K=100L) %>%
   add_row(.model="K = 60", RMSE=67.92, MAE=56.39,
@@ -238,7 +245,13 @@ parameter_metrics %>%
   geom_line() +
   geom_smooth(se=FALSE, linetype="dashed", size=0.5)
 ```
+### Final model selection
+The MPE may be seen as a bias metric while the other accuracy assessors act more like
+variance metrics. For this reason, since the model is expected to forecast to a
+distant horizon (291 days into the future), a low bias is prioritized and balanced with lesser possible variance.
+
 ```{r final_model}
+# May take a while to train
 final.model <- reservations.daily.COVID.excluded %>%
   model(dynamic_harmonic_regression(K=75, log_transform=TRUE))
 ```

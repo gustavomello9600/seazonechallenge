@@ -25,8 +25,9 @@ theme_set(dark_theme_gray())
 ```{r loading}
 # Imports dataset made in EDA script
 cwd <- getwd()
-daily.revenue.listings <- read_csv(paste0(cwd,
-                                          "/../data/output/daily_revenue_listings.csv"))
+daily.revenue.listings <- read_csv(
+  paste0(cwd, "/../data/output/daily_revenue_listings.csv")
+)
 ```
 
 # Question 1
@@ -34,7 +35,8 @@ daily.revenue.listings <- read_csv(paste0(cwd,
 The expected value for a random variable is better estimated by its average over observed values:
 ```{r question1, echo=TRUE, message=FALSE, warning=FALSE}
 (daily.revenue.listings %>% 
-  select(date, Localização, Categoria, Quartos, last_offered_price, comission) %>%
+  select(date, Localização, Categoria,
+         Quartos, last_offered_price, commission) %>%
   mutate(month=month(date, label=TRUE)) %>%
   filter(month=="mar",
          Localização=="JUR",
@@ -42,9 +44,9 @@ The expected value for a random variable is better estimated by its average over
          Quartos==2))
 ```
 
-However the query above returns 0 results. Therefore, it is necessary to model the data to predict price and revenue (comission earned by Seazone) from the 4 features: month, location, category and number of bedrooms. Two predictive models, also considered in the EDA script, are tested and applied below:
+However the query above returns 0 results. Therefore, it is necessary to model the data to predict price and revenue (commission earned by Seazone) from the 4 features: month, location, category and number of bedrooms. Two predictive models, also considered in the EDA script, are tested and applied below:
 ```{r predictive_modeling, results='hide'}
-comission.earned.data <- daily.revenue.listings %>%
+commission.earned.data <- daily.revenue.listings %>%
   filter(occupancy==1, blocked==0) %>%
   select(date, Localização, Categoria, Quartos,
          last_offered_price, revenue, Comissão) %>%
@@ -55,10 +57,10 @@ comission.earned.data <- daily.revenue.listings %>%
 
 
 # Temporal subsetting
-train <- comission.earned.data %>%
+train <- commission.earned.data %>%
   filter(date <= "2022-01-31")
 
-test <- comission.earned.data %>%
+test <- commission.earned.data %>%
   filter(date > "2022-01-31")
 
 
@@ -162,7 +164,7 @@ predict(xgboost.model.revenue, case.matrix)[case.index] # 312.2011
 ```
 Comparing predictions to actual data, we might see that a good estimate should be in between R\$ 383,00 and R\$ 531,64.
 ```{r comparison_with_actual_data, message=FALSE, warning=FALSE}
-(comparison <- comission.earned.data %>%
+(comparison <- commission.earned.data %>%
   filter(Localização=="JUR", month=="mar", Categoria=="MASTER") %>%
   group_by(month, Localização, Categoria, Quartos) %>%
   summarise(avg_revenue=mean(revenue)))
@@ -209,7 +211,7 @@ Using the ensemble with the least RMSE as final predictor:
 final.prediction.price <- 0.2*586.2073 + 0.8*312.2011
 # R$ 367,00
 
-final.prediction.comission <- 0.2*final.prediction.price
+final.prediction.commission <- 0.2*final.prediction.price
 # R$ 73,40
 ```
 
@@ -217,22 +219,22 @@ Even though it is not contained in the proposed interval, it is informed by all 
 
 # Question 2
 ### What is Seazone expected revenue for 2022? Why?
-As developed in the Modeling script, a SARIMA(1, 0, 0)(0, 1, 0)[12] model, the best performer in cross-validation tests, forecasts the below results in terms of revenue for Seazone (comissions earned total):
-```{r comissions_forecast}
-monthly.comissions <- daily.revenue.listings %>%
-  select(date, comission) %>%
+As developed in the Revenue Modeling script, a SARIMA(1, 0, 0)(0, 1, 0)[12] model, the best performer in cross-validation tests, forecasts the below results in terms of revenue for Seazone (commissions earned total):
+```{r commissions_forecast}
+monthly.commissions <- daily.revenue.listings %>%
+  select(date, commission) %>%
   mutate(date=yearmonth(date)) %>%
   group_by(date) %>%
-  summarise(comission=sum(comission)) %>%
+  summarise(commission=sum(commission)) %>%
   as_tsibble(index=date) %>%
   filter_index(~"2022-02")
 
-monthly.comissions.forecast <- monthly.comissions %>%
-  model(ARIMA(comission)) %>%
+monthly.commissions.forecast <- monthly.commissions %>%
+  model(ARIMA(commission)) %>%
   forecast(h=10)
 
-revenue.forecast.plot <- monthly.comissions.forecast %>%
-  autoplot(monthly.comissions, level=80) +
+revenue.forecast.plot <- monthly.commissions.forecast %>%
+  autoplot(monthly.commissions, level=80) +
   scale_y_log10() +
   labs("Revenue forecast",
        x="Month",
@@ -240,22 +242,22 @@ revenue.forecast.plot <- monthly.comissions.forecast %>%
 
 revenue.forecast.plot
 
-monthly.comissions.forecasted <- monthly.comissions.forecast %>%
+monthly.commissions.forecasted <- monthly.commissions.forecast %>%
   hilo() %>%
   unpack_hilo(c("80%", "95%")) %>%
-  select(-c(.model, comission)) %>%
+  select(-c(.model, commission)) %>%
   rename(forecast=.mean)
 
-monthly.comissions.actual.and.forecasted <- monthly.comissions %>%
-  full_join(monthly.comissions.forecasted, by=c("date"="date"))
+monthly.commissions.actual.and.forecasted <- monthly.commissions %>%
+  full_join(monthly.commissions.forecasted, by=c("date"="date"))
 
-revenue.by.year <- monthly.comissions.actual.and.forecasted %>%
+revenue.by.year <- monthly.commissions.actual.and.forecasted %>%
   as_tibble() %>%
-  select(date, comission, forecast, "80%_lower", "80%_upper") %>%
+  select(date, commission, forecast, "80%_lower", "80%_upper") %>%
   rename(upper80="80%_upper", lower80="80%_lower") %>%
   mutate(year=year(date)) %>%
   group_by(year) %>%
-  summarise(realized=sum(comission, na.rm=TRUE),
+  summarise(realized=sum(commission, na.rm=TRUE),
             forecasted_mean=sum(forecast, na.rm=TRUE),
             upper80=sum(upper80, na.rm=TRUE),
             lower80=sum(lower80, na.rm=TRUE)) %>%
@@ -325,6 +327,8 @@ demand.forecast.plot <- final.model %>%
        x="Day",
        y="Reservations (log scale)") +
   scale_y_log10()
+
+demand.forecast.plot
 ```
 
 
@@ -355,6 +359,8 @@ percentage.by.advance.plot <- ny.nights %>%
   geom_text(aes(-100, 0.5, label="50%", vjust = -1), data=data.frame()) + 
   geom_text(aes(-100, 0.8, label="80%", vjust = -1), data=data.frame())
 
+# For some reason, the area plot does not look right
+# in Plotly's Chart Studio, so I isolated the area layer here
 (percentage.by.advance.plot
 + geom_area(aes(fill=year, alpha=0.1), position="identity"))
 ```
@@ -376,13 +382,16 @@ predicted.dates <- as_date(sapply(predicted.advances, function(advance){
 predicted.dates
 ```
 
-As uncovered in the EDA script, reservation advance, apart from the cleaning fees when applied, is the most relevant predictor for a listing's last offered price. Pricing is considerably dependent on reservation advance since it carries a trade-off: on one hand, a costumer is willing to pay more for booking to a close date; on the other, there is a strong incentive to sell as many bookings as possible up to the target date.
+As uncovered in the EDA script, reservation advance, apart from the cleaning fees when applied, is the most relevant predictor for a listing's last offered price. Pricing is considerably dependent on reservation advance since it carries a trade-off: on one hand, a costumer is willing to pay more for booking to a close date; on the other, there is a strong incentive to sell as many bookings as possible up to the target date
+(Guizzardi et al., 2017).
 
 To set an optimal price is to reach an agreement between what is mutually interesting for both the business and its clients.
 
 Furthermore, a model that predicts the odds of selling a booking given the percentage of available listings for a particular date at a particular price may be used to maximize a revenue function through the price variable.
 
 ```{r export_to_chart_studio, eval=FALSE, include=FALSE}
+# Code here is meant to generate the online interactive plots
+
 library(plotly)
 
 Sys.setenv("plotly_username"="gustavomello9600")
@@ -392,7 +401,7 @@ p <- ggplotly(percentage.by.advance.plot, width=1200, height=600)
 api_create(p, filename = "r-area-plot-percentage-by-advance",
            fileopt="overwrite", sharing="public")
 
-p <- ggplotly(monthly.comissions.actual.and.forecasted %>%
+p <- ggplotly(monthly.commissions.actual.and.forecasted %>%
                 pivot_longer(!date, names_to="tipo", values_to="value") %>%
                 ggplot(aes(x=date, y=value, color=tipo)) +
                 geom_line() +
@@ -405,9 +414,31 @@ p <- ggplotly(monthly.comissions.actual.and.forecasted %>%
 api_create(p, filename = "r-forecast-seazone-revenue",
            fileopt="overwrite", sharing="public")
 
-# p <- ggplotly(revenue.forecast.plot, width=1200, height=600)
-# api_create(p, filename = "r-area-plot-percentage-by-advance",
-#            fileopt="overwrite", sharing="public")
+
+reservations.daily.forecasted <- final.model %>%
+  forecast(reservations.daily.COVID.excluded.new.data) %>%
+  hilo() %>%
+  unpack_hilo(c("80%", "95%")) %>%
+  select(-c(.model, count, is.workday)) %>%
+  rename(forecast=.mean)
+
+reservations.daily.actual.and.forecasted <-
+  reservations.daily.COVID.excluded %>%
+  select(-c(is.workday)) %>%
+  full_join(reservations.daily.forecasted, by=c("date"="date"))
+
+p <- ggplotly(reservations.daily.actual.and.forecasted %>%
+                pivot_longer(!date, names_to="tipo", values_to="value") %>%
+                ggplot(aes(x=date, y=value, color=tipo)) +
+                geom_line() +
+                scale_y_log10() +
+                labs("Demand forecast",
+                     x="Day",
+                     y="Total reservations (log scale)"),
+              width=1200,
+              height=600)
+api_create(p, filename = "r-forecast-seazone-demand",
+           fileopt="overwrite", sharing="public")
 
 ```
 

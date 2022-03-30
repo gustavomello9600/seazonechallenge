@@ -2,7 +2,7 @@
 title: "Exploratory Data Analysis"
 author: "Gustavo Mello"
 date: '2022-03-19'
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -12,6 +12,9 @@ library(lubridate)
 library(bizdays)
 library(xgboost)
 library(fastDummies)
+library(ggdark)
+
+theme_set(dark_theme_gray())
 ```
 
 # Data Loading and Cleansing
@@ -24,7 +27,8 @@ daily.revenue <- as_tibble(read.csv(paste0(cwd, "/../data/input/daily_revenue-ch
 ```
 
 ## Data Cleansing
-The functions below, as well as the dplyr verbs, were carefully chosen through experimentation to get the data to present itself in useful formats respecting the tidy data standard.
+The functions below, as well as the dplyr verbs, were carefully chosen through experimentation to get the data to present itself in useful formats respecting
+the tidy data standard.
 
 ### listings-challenge.csv noteworthy transformations
 Category and number of rooms are separated so it is possible to analyse these predictors individually. Address column is dropped since it is unstructured data which signal is assumed to be captured by Localization variable. The strange "TOPM" category merges with "TOP" category.
@@ -66,11 +70,11 @@ tidy.daily.revenue
 ```
 
 ## Data Agreggation
-In order to train predictive models, joining the two datasets is needed.
+In order to train predictive models, joining the two datasets is desired.
 ```{r agreggation}
 daily.revenue.listings <- tidy.daily.revenue %>%
   left_join(tidy.listings, by=c("listing" = "Código")) %>%
-  mutate(comission=last_offered_price*Comissão,
+  mutate(commission=last_offered_price*Comissão,
          listing=as.factor(listing))
 
 daily.revenue.listings
@@ -91,20 +95,20 @@ Indeed, checking the TST001 rows in daily.revenue.listings yields:
 daily.revenue.listings[which(daily.revenue.listings$listing == "TST001"),] %>%
   select(listing, setdiff(names(tidy.listings), c("Código")))
 ```
-Since 0 revenue is made from this listing, it is safe to drop its rows without compromising.
+Since 0 revenue is made from this listing, it is safe to drop its rows without compromising future results.
 ```{r drop_rows}
 sum(daily.revenue.listings[which(daily.revenue.listings$listing == "TST001"),]$revenue)
 daily.revenue.listings <- filter(daily.revenue.listings, listing != "TST001")
 ```
 
-## Comission earned across time
-```{r comission}
+## Commission earned across time
+```{r commission}
 daily.revenue.listings %>%
-  mutate(comission=revenue*Comissão) %>%
-  select(date, comission) %>%
+  mutate(commission=revenue*Comissão) %>%
+  select(date, commission) %>%
   group_by(date) %>%
-  summarise(comission=sum(comission)) %>%
-  ggplot(aes(x=date, y=comission)) +
+  summarise(commission=sum(commission)) %>%
+  ggplot(aes(x=date, y=commission)) +
   geom_line() +
   geom_vline(xintercept=as.numeric(ymd("2022-03-15")), colour="blue")
 ```
@@ -135,7 +139,7 @@ revenue.made.data <- daily.revenue.listings %>%
   # Ignores redundant or not relevant predictors
   select(-c(last_offered_price, listing, date, occupancy, blocked, Comissão,
             creation_date, Data.Inicial.do.contrato, Travesseiros, Status,
-            comission, revenue))
+            commission, revenue))
 ```
 
 ### Comparing revenue against log(revenue) distributions
@@ -145,7 +149,6 @@ par(mfrow=c(1, 2))
 plot(density(exp(revenue.made.data$log.revenue)), main="Revenue")
 plot(density(revenue.made.data$log.revenue), main="log(Revenue)")
 ```
-
 
 
 ### Checking for NAs
