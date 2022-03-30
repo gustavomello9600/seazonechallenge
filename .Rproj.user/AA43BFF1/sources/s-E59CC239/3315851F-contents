@@ -1,0 +1,218 @@
+---
+title: "Exploratory Data Analysis"
+author: "Gustavo Mello"
+date: '2022-03-19'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+library(tidyverse)
+library(lubridate)
+library(bizdays)
+library(xgboost)
+library(fastDummies)
+library(ggdark)
+
+theme_set(dark_theme_gray())
+```
+
+# Data Loading and Cleansing
+
+## Data Loading
+```{r loading}
+cwd <- getwd()
+listings <- as_tibble(read.csv(paste0(cwd, "/../data/input/listings-challenge.csv")))
+daily.revenue <- as_tibble(read.csv(paste0(cwd, "/../data/input/daily_revenue-challenge.csv")))
+```
+
+## Data Cleansing
+The functions below, as well as the dplyr verbs, were carefully chosen through experimentation to get the data to present itself in useful formats respecting
+the tidy data standard.
+
+### listings-challenge.csv noteworthy transformations
+Category and number of rooms are separated so it is possible to analyse these predictors individually. Address column is dropped since it is unstructured data which signal is assumed to be captured by Localization variable. The strange "TOPM" category merges with "TOP" category.
+
+### daily_revenue-challenge.csv noteworthy transformations
+Reservation advance variable introduced as it is regarded as a key metric
+
+```{r cleansing}
+# Auxiliary cleaning functions
+parse_double_with_comma <- function(x){
+  parse_number(x, locale=locale(decimal_mark=","))
+}
+parse_integer_with_comma <- function(x){
+  as.integer(parse_double_with_comma(x))
+}
+
+# Prepares datasets to perform relevant analysis
+tidy.listings <- listings %>%
+  mutate(across(c("Tipo", "Status", "Hotel", "Categoria", "Localização"),
+                as.factor)) %>%
+  mutate(across(c("Comissão", "Banheiros", "Taxa.de.Limpeza"),
+                parse_double_with_comma)) %>%
+  mutate(across(c(contains("Cama"), "Travesseiros", "Capacidade"),
+                parse_integer_with_comma)) %>%
+  mutate(Data.Inicial.do.contrato=dmy(Data.Inicial.do.contrato)) %>%
+  extract(Categoria, c("Categoria", "Quartos"), "[HOU]*([A-Z]+)([0-9])*Q*",
+          convert=TRUE) %>%
+  mutate(Categoria=as.factor(Categoria)) %>%
+  select(-c("Endereço")) %>%
+  mutate(Categoria=fct_collapse(Categoria, TOP=c("TOP", "TOPM")))
+
+tidy.daily.revenue <- daily.revenue %>%
+  mutate(listing=as.factor(listing)) %>%
+  mutate(across(contains("date"), ~as_date(parse_datetime(.)))) %>%
+  mutate(reservation_advance=date - creation_date)
+
+tidy.listings
+tidy.daily.revenue
+```
+
+## Data Agreggation
+In order to train predictive models, joining the two datasets is desired.
+```{r agreggation}
+daily.revenue.listings <- tidy.daily.revenue %>%
+  left_join(tidy.listings, by=c("listing" = "Código")) %>%
+  mutate(commission=last_offered_price*Comissão,
+         listing=as.factor(listing))
+
+daily.revenue.listings
+```
+
+# Exploratory Data Analysis
+## Check for NAs
+```{r na_check}
+sapply(daily.revenue.listings, function(x) sum(is.na(x)))
+```
+The NA count suggests there are listings in daily_revenue.csv not in listings.csv
+```{r listings_not_in_daily_revenue}
+unique.listings <- as.character(unique(tidy.daily.revenue$listing))
+unique.listings[-which(unique.listings %in% tidy.listings$Código)]
+```
+Indeed, checking the TST001 rows in daily.revenue.listings yields:
+```{r TST001rows}
+daily.revenue.listings[which(daily.revenue.listings$listing == "TST001"),] %>%
+  select(listing, setdiff(names(tidy.listings), c("Código")))
+```
+Since 0 revenue is made from this listing, it is safe to drop its rows without compromising future results.
+```{r drop_rows}
+sum(daily.revenue.listings[which(daily.revenue.listings$listing == "TST001"),]$revenue)
+daily.revenue.listings <- filter(daily.revenue.listings, listing != "TST001")
+```
+
+## Commission earned across time
+```{r commission}
+daily.revenue.listings %>%
+  mutate(commission=revenue*Comissão) %>%
+  select(date, commission) %>%
+  group_by(date) %>%
+  summarise(commission=sum(commission)) %>%
+  ggplot(aes(x=date, y=commission)) +
+  geom_line() +
+  geom_vline(xintercept=as.numeric(ymd("2022-03-15")), colour="blue")
+```
+
+The COVID-19 pandemic effects can be seen clearly in the plot. To investigate it a little further:
+```{r covid_effects}
+daily.revenue.listings %>%
+  filter(date >= "2020-01-01", date <= "2020-12-31")
+```
+
+It is relevant to notice that all entries were generated up to a date:
+```{r last_date}
+max(daily.revenue.listings$creation_date, na.rm=TRUE)
+```
+As a consequence, all revenue posterior to it (blue vertical line) is not yet consolidated.
+
+## Understanding key variables influencing revenue
+
+A log transform is applied in order to best account for variation scale in revenue variable.
+```{r revenue_made_data}
+revenue.made.data <- daily.revenue.listings %>%
+  # Feature engineering applied here
+  mutate(is.weekend = timeDate::isWeekend(date),
+         is.holiday = date %in% holidaysANBIMA) %>%
+  filter(occupancy==1, blocked==0) %>%
+  # Adjusts scale to enhance model fitting
+  mutate(log.revenue = log(revenue)) %>%
+  # Ignores redundant or not relevant predictors
+  select(-c(last_offered_price, listing, date, occupancy, blocked, Comissão,
+            creation_date, Data.Inicial.do.contrato, Travesseiros, Status,
+            commission, revenue))
+```
+
+### Comparing revenue against log(revenue) distributions
+```{r}
+par(mfrow=c(1, 2))
+
+plot(density(exp(revenue.made.data$log.revenue)), main="Revenue")
+plot(density(revenue.made.data$log.revenue), main="log(Revenue)")
+```
+
+
+### Checking for NAs
+```{r na_check_regression}
+sapply(revenue.made.data, function(x) sum(is.na(x)))
+```
+```{r examine_NAs}
+revenue.made.data.missing.rooms <- revenue.made.data[
+  which(is.na(revenue.made.data$Quartos)),
+]
+all(revenue.made.data.missing.rooms$Hotel == "Sim")
+```
+Since some variables behave always differently given the listing is or is not inside a hotel, two models are made to investigate predictor importance on both occasions.
+
+### Hotel and No Hotel split
+```{r hotel_split}
+revenue.made.data.hotel <- revenue.made.data %>%
+  filter(Hotel == "Sim") %>%
+  select(-c(Hotel, Quartos, Taxa.de.Limpeza, Tipo))
+
+revenue.made.data.no.hotel <- revenue.made.data %>%
+  filter(Hotel == "Não") %>%
+  mutate(log.Taxa.de.Limpeza = log(Taxa.de.Limpeza)) %>%
+  select(-c(Hotel, Taxa.de.Limpeza))
+
+head(revenue.made.data.hotel)
+head(revenue.made.data.no.hotel)
+```
+
+### Best subset selection for linear regression
+```{r best_subset}
+summary(step(lm(log.revenue ~ ., data=revenue.made.data.hotel), trace=0))
+summary(step(lm(log.revenue ~ ., data=revenue.made.data.no.hotel), trace=0))
+```
+The low values for R² and large residuals standard errors suggests that a linear regression model is not well suited to the data at hand.
+
+### Boosted Trees Regression (Xtreme Gradient Boosting)
+Adopting a more robust model, proven to work in similar cases, yields:
+```{r xgboost}
+hotel.matrix <- as.matrix(revenue.made.data.hotel %>%
+                            select(-c(log.revenue)) %>%
+                            mutate(reservation_advance=as.numeric(reservation_advance)) %>%
+                            dummy_cols(remove_selected_columns = TRUE)) 
+model.hotel <- xgboost(data=hotel.matrix,
+                       label=revenue.made.data.hotel$log.revenue,
+                       nrounds=20,
+                       max.depth=6)
+
+xgb.plot.importance(xgb.importance(model=model.hotel))
+
+no.hotel.matrix <- as.matrix(revenue.made.data.no.hotel %>%
+                                select(-c(log.revenue)) %>%
+                            mutate(reservation_advance=as.numeric(reservation_advance)) %>%
+                            dummy_cols(remove_selected_columns = TRUE)) 
+model.no.hotel <- xgboost(data=no.hotel.matrix,
+                       label=revenue.made.data.no.hotel$log.revenue,
+                       nrounds=20,
+                       max.depth=6)
+
+xgb.plot.importance(xgb.importance(model=model.no.hotel))
+```
+# Export data to next step
+```{r next_step}
+write_csv(daily.revenue.listings,
+          paste0(cwd, "/../data/output/daily_revenue_listings.csv"))
+```
+

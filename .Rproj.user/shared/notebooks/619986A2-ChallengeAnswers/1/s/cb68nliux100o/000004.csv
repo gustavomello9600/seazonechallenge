@@ -1,0 +1,7 @@
+"0","(daily.revenue.listings %>% "
+"0","  select(date, Localização, Categoria, Quartos, last_offered_price, comission) %>%"
+"0","  mutate(month=month(date, label=TRUE)) %>%"
+"0","  filter(month==""mar"","
+"0","         Localização==""JUR"","
+"0","         Categoria==""MASTER"","
+"0","         Quartos==2))"

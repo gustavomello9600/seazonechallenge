@@ -1,0 +1,6 @@
+"0","(comparison <- comission.earned.data %>%"
+"0","  filter(Localização==""JUR"", month==""mar"", Categoria==""MASTER"") %>%"
+"0","  group_by(month, Localização, Categoria, Quartos) %>%"
+"0","  summarise(avg_revenue=mean(revenue)))"
+"1","`summarise()` has grouped output by 'month', 'Localização', 'Categoria'. You can override using the `.groups` argument.
+"

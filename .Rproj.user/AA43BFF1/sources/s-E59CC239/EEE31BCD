@@ -1,0 +1,27 @@
+{
+    "id": "EEE31BCD",
+    "path": "~/dev/data_science/seazonechallenge/scripts/ChallengeAnswers.Rmd",
+    "project_path": "scripts/ChallengeAnswers.Rmd",
+    "type": "r_markdown",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1648594446709.0,
+    "source_on_save": true,
+    "relative_order": 1,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "last_setup_crc32": "E59CC2393d915bcc",
+        "cursorPosition": "17,16",
+        "scrollLine": "8"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1648602856,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1648602858387,
+    "read_only": false,
+    "read_only_alternatives": []
+}

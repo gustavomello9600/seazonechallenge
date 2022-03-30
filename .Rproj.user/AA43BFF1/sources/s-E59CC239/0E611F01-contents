@@ -1,0 +1,275 @@
+---
+title: "Modeling Demand"
+author: "Gustavo Mello"
+date: '2022-03-28'
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(tsibble)
+library(fable)
+library(feasts)
+library(bizdays)
+library(ggdark)
+
+theme_set(dark_theme_gray())
+```
+
+# Data loading
+```{r loading}
+# Imports dataset made in EDA script
+cwd <- getwd()
+daily.revenue.listings <- read_csv(paste0(cwd, "/../data/output/daily_revenue_listings.csv"))
+```
+
+# Reservations across time
+```{r reservations}
+
+reservations.daily <- daily.revenue.listings %>%
+  filter(date <= "2022-03-15", occupancy==1, blocked==0) %>%
+  select(date) %>%
+  group_by(date) %>%
+  summarise(count=n()) %>%
+  tsibble(index=date) %>%
+  fill_gaps(count=0, .full=TRUE) %>%
+  mutate(is.workday = !(timeDate::isWeekend(date)
+                        | (date %in% holidaysANBIMA)))
+
+autoplot(reservations.daily)
+```
+
+
+## Forecasting
+### Dynamic Harmonic Regression
+To forecast with this dataset, we need a model that captures multiple seasonalities and is robust to sudden changes (like the pandemic). Also, as the seasonality effects seems to scale with the response variable magnitude, it is reasonable to test applying a log transform prior to modeling. For these reasons, a dynamic harmonic regression model is fitted using Fourier terms to account for seasonality and an ARMA model to account for short-term dynamics.
+```{r dynamic_harmonic_regression}
+dynamic_harmonic_regression <- function(K, log_transform=FALSE){
+  K_weekly <- if (K > 3) {3} else {K}
+  if(log_transform){
+    ARIMA(log(count) ~ PDQ(0, 0, 0)
+                       + fourier(K=K_weekly, period=7)
+                       + fourier(K=K, period=365.25)
+                       + is.workday)
+  } else{
+    ARIMA(count ~ PDQ(0, 0, 0)
+                  + fourier(K=K_weekly, period=7)
+                  + fourier(K=K, period=365.25)
+                  + is.workday)
+  }
+}
+
+fit <- reservations.daily %>%
+  mutate(count=count + 1) %>%
+  model("K = 1"      = dynamic_harmonic_regression(K=1),
+        "K = 2"      = dynamic_harmonic_regression(K=2),
+        "K = 3"      = dynamic_harmonic_regression(K=3),
+        "K = 4"      = dynamic_harmonic_regression(K=4),
+        "K = 5"      = dynamic_harmonic_regression(K=5),
+        "K = 6"      = dynamic_harmonic_regression(K=6),
+        "K = 1, log" = dynamic_harmonic_regression(K=1, log_transform = TRUE),
+        "K = 2, log" = dynamic_harmonic_regression(K=2, log_transform = TRUE),
+        "K = 3, log" = dynamic_harmonic_regression(K=3, log_transform = TRUE),
+        "K = 4, log" = dynamic_harmonic_regression(K=4, log_transform = TRUE),
+        "K = 5, log" = dynamic_harmonic_regression(K=5, log_transform = TRUE),
+        "K = 6, log" = dynamic_harmonic_regression(K=6, log_transform = TRUE))
+```
+
+``` {r plot_forecasts, fig.width=12, fig.heigth=24}
+reservations.daily.new.data <- reservations.daily %>%
+  new_data(291L) %>%
+  mutate(is.workday = !(timeDate::isWeekend(date)
+                        | (date %in% holidaysANBIMA)))
+
+fit %>%
+  forecast(new_data=reservations.daily.new.data) %>%
+  autoplot(reservations.daily, level=NULL) +
+  facet_wrap(vars(.model), ncol=2, scale="free_y") +
+  geom_label(
+    aes(x = ymd("2021-01-01"), y = 200,
+        label = paste0("AICc = ", format(AICc))),
+    data = glance(fit))
+```
+
+### DHR excluding COVID lockdowns in 2022 and prior data
+```{r exclude_covid}
+reservations.daily.COVID.excluded <- reservations.daily %>%
+  filter_index("2021-01-01" ~ "2022-03-15")
+
+fit.COVID.excluded <- reservations.daily.COVID.excluded %>%
+  mutate(count=count + 1) %>%
+  model("K = 1"      = dynamic_harmonic_regression(K=1),
+        "K = 2"      = dynamic_harmonic_regression(K=2),
+        "K = 3"      = dynamic_harmonic_regression(K=3),
+        "K = 4"      = dynamic_harmonic_regression(K=4),
+        "K = 5"      = dynamic_harmonic_regression(K=5),
+        "K = 6"      = dynamic_harmonic_regression(K=6),
+        "K = 1, log" = dynamic_harmonic_regression(K=1, log_transform = TRUE),
+        "K = 2, log" = dynamic_harmonic_regression(K=2, log_transform = TRUE),
+        "K = 3, log" = dynamic_harmonic_regression(K=3, log_transform = TRUE),
+        "K = 4, log" = dynamic_harmonic_regression(K=4, log_transform = TRUE),
+        "K = 5, log" = dynamic_harmonic_regression(K=5, log_transform = TRUE),
+        "K = 6, log" = dynamic_harmonic_regression(K=6, log_transform = TRUE))
+```
+
+``` {r plot_forecasts_COVID_excluded, fig.width=12, fig.heigth=24}
+reservations.daily.COVID.excluded.new.data <- reservations.daily.COVID.excluded %>%
+  new_data(291L) %>%
+  mutate(is.workday = !(timeDate::isWeekend(date)
+                        | (date %in% holidaysANBIMA)))
+
+fit.COVID.excluded %>%
+  forecast(new_data=reservations.daily.COVID.excluded.new.data) %>%
+  autoplot(reservations.daily.COVID.excluded,
+           level=NULL) +
+  facet_wrap(vars(.model), ncol=2, scale="free_y") +
+  geom_label(
+    aes(x = ymd("2021-06-01"), y = 200,
+        label = paste0("AICc = ", format(AICc))),
+    data = glance(fit))
+```
+
+### K hyperparameter tuning
+```{r plot_K}
+plot_K <- function(K=2){
+  fit_test <- reservations.daily.COVID.excluded %>%
+    mutate(count=count + 1) %>%
+    model(dynamic_harmonic_regression(K=K, log_transform = TRUE))
+  
+    fit_test %>%
+  forecast(new_data=reservations.daily.COVID.excluded.new.data) %>%
+  autoplot(reservations.daily.COVID.excluded.new.data,
+           level=NULL) +
+  geom_label(
+    aes(x = ymd("2021-06-01"), y = 200,
+        label = paste0("AICc = ", format(AICc))),
+    data = glance(fit))
+}
+```
+
+```{r cross_validating_models}
+models <- reservations.daily.COVID.excluded %>%
+  filter_index(~ "2022-03-04") %>%
+  stretch_tsibble(.init = 369, .step=10) %>%
+  model(
+    "K = 1"  = dynamic_harmonic_regression(K=1,  log_transform=TRUE),
+    "K = 2"  = dynamic_harmonic_regression(K=2,  log_transform=TRUE),
+    "K = 5"  = dynamic_harmonic_regression(K=5,  log_transform=TRUE)#, Cached
+    # "K = 10" = dynamic_harmonic_regression(K=10, log_transform=TRUE),
+    # "K = 20" = dynamic_harmonic_regression(K=20, log_transform=TRUE),
+    # "K = 30" = dynamic_harmonic_regression(K=30, log_transform=TRUE),
+    # "K = 50" = dynamic_harmonic_regression(K=50, log_transform=TRUE)
+  )
+```
+
+```{r cross_validating_selection}
+CV.data <- reservations.daily.COVID.excluded %>%
+  filter_index(~ "2022-03-04") %>%
+  stretch_tsibble(.init = 369, .step=10) %>%
+  new_data(10L) %>%
+  mutate(is.workday = !(timeDate::isWeekend(date)
+                        | (date %in% holidaysANBIMA)))
+
+results <- models %>%
+  forecast(new_data=CV.data) %>%
+  accuracy(reservations.daily.COVID.excluded) %>%
+  select(.model, RMSE:MAPE)
+
+results %>% arrange(RMSE)
+```
+
+```{r cross_validate_one}
+cross.validate.for <- function(K){
+  model_for_K <- reservations.daily.COVID.excluded %>%
+    filter_index(~ "2022-03-04") %>%
+    stretch_tsibble(.init = 369, .step=10) %>%
+    model(dynamic_harmonic_regression(K=K,  log_transform=TRUE))
+  
+  CV.data <- reservations.daily.COVID.excluded %>%
+  filter_index(~ "2022-03-04") %>%
+  stretch_tsibble(.init = 369, .step=10) %>%
+  new_data(10L) %>%
+  mutate(is.workday = !(timeDate::isWeekend(date)
+                        | (date %in% holidaysANBIMA)))
+
+  model_for_K %>%
+  forecast(new_data=CV.data) %>%
+  accuracy(reservations.daily.COVID.excluded) %>%
+  select(.model, RMSE:MAPE)
+}
+```
+
+```{r optimal_parameter}
+parameter_metrics <- results %>%
+  mutate(K=sapply(results$.model,
+                  function(x){
+                    parse_integer(substring(x, first=5))
+                  })) %>%
+  add_row(.model="K = 10", RMSE=82.92, MAE=64.47,
+          MPE=9.77, MAPE=31.11, K=10L) %>%
+  add_row(.model="K = 20", RMSE=91.61, MAE=74.54,
+          MPE=14.24, MAPE=35.70, K=20L) %>%
+  add_row(.model="K = 30", RMSE=96.51, MAE=77.95,
+          MPE=13.52, MAPE=37.41, K=30L) %>%
+  add_row(.model="K = 50", RMSE=81.98, MAE=65.69,
+          MPE=4.72, MAPE=31.93, K=50L) %>%
+  add_row(.model="K = 100", RMSE=98.63, MAE=77.58,
+          MPE=6.63, MAPE=38.10, K=100L) %>%
+  add_row(.model="K = 60", RMSE=67.92, MAE=56.39,
+          MPE=6.19, MAPE=27.67, K=60L) %>%
+  add_row(.model="K = 40", RMSE=79.48, MAE=63.04,
+          MPE=5.30, MAPE=30.54, K=40L) %>%
+  add_row(.model="K = 70", RMSE=63.83, MAE=54.16,
+          MPE=3.14, MAPE=26.76, K=70L) %>%
+  add_row(.model="K = 80", RMSE=92.31, MAE=73.40,
+          MPE=12.94, MAPE=35.53, K=80L) %>%
+  add_row(.model="K = 65", RMSE=66.08, MAE=56.02,
+          MPE=3.40, MAPE=27.61, K=65L) %>%
+  add_row(.model="K = 75", RMSE=61.54, MAE=51.18,
+          MPE=2.17, MAPE=25.34, K=75L) %>%
+  add_row(.model="K = 77", RMSE=65.98, MAE=55.84,
+          MPE=0.93, MAPE=27.39, K=77L) %>%
+  add_row(.model="K = 73", RMSE=64.54, MAE=53.98,
+          MPE=1.01, MAPE=26.69, K=73L) %>%
+  arrange(K)
+
+parameter_metrics
+
+parameter_metrics %>%
+  pivot_longer(RMSE:MAPE, names_to = "Metric", values_to = "Value") %>%
+  ggplot(aes(x=K, y=Value, color=Metric)) +
+  geom_point(size=2) +
+  geom_line() +
+  geom_smooth(se=FALSE, linetype="dashed", size=0.5)
+```
+### Final model selection
+The MPE may be seen as a bias metric while the other accuracy assessors act more like
+variance metrics. For this reason, since the model is expected to forecast to a
+distant horizon (291 days into the future), a low bias is prioritized and balanced with lesser possible variance.
+
+```{r final_model}
+# May take a while to train
+final.model <- reservations.daily.COVID.excluded %>%
+  model(dynamic_harmonic_regression(K=75, log_transform=TRUE))
+```
+
+```{r final_forecast}
+final.model %>%
+  forecast(reservations.daily.COVID.excluded.new.data) %>%
+  autoplot(reservations.daily.COVID.excluded, level=80) +
+  labs("Daily Number of Reservations Forecast",
+       x="Day",
+       y="Reservations")
+
+final.model %>%
+  forecast(reservations.daily.COVID.excluded.new.data) %>%
+  autoplot(reservations.daily.COVID.excluded, level=80) +
+  labs("Daily Number of Reservations Forecast",
+       x="Day",
+       y="Reservations (log scale)") +
+  scale_y_log10()
+```
+

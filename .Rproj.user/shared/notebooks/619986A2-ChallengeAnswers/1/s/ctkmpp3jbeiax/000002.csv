@@ -1,0 +1,5 @@
+"0","final.prediction.price <- 0.2*586.2073 + 0.8*312.2011"
+"0","# R$ 367,00"
+"0",""
+"0","final.prediction.comission <- 0.2*final.prediction.price"
+"0","# R$ 73,40"

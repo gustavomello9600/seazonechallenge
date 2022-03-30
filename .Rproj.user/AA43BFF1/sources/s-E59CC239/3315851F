@@ -1,0 +1,24 @@
+{
+    "id": "3315851F",
+    "path": "~/dev/data_science/seazonechallenge/scripts/ExploratoryDataAnalysis.Rmd",
+    "project_path": "scripts/ExploratoryDataAnalysis.Rmd",
+    "type": "r_markdown",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1648608036382.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1648602856,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1648602856,
+    "read_only": false,
+    "read_only_alternatives": []
+}

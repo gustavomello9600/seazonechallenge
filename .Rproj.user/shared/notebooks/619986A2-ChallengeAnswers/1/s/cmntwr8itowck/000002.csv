@@ -1,0 +1,16 @@
+"0","# Imports dataset made in EDA script"
+"0","cwd <- getwd()"
+"0","daily.revenue.listings <- read_csv(paste0(cwd,"
+"0","                                          ""/../data/output/daily_revenue_listings.csv""))"
+"1","[1mRows: [22m[34m289021[39m [1mColumns: [22m[34m26[39m
+"
+"1","[36m--[39m [1mColumn specification[22m [36m---------------------------------------------------------------------------------------[39m
+[1mDelimiter:[22m "",""
+[31mchr[39m   (6): listing, Localização, Categoria, Hotel, Status, Tipo
+[32mdbl[39m  (17): last_offered_price, occupancy, revenue, blocked, reservation_advance, Quartos, Comissão, Cama.Ca...
+[34mdate[39m  (3): date, creation_date, Data.Inicial.do.contrato
+"
+"1","
+[36mi[39m Use [38;5;235m[48;5;253m[38;5;235m[48;5;253m`spec()`[48;5;253m[38;5;235m[49m[39m to retrieve the full column specification for this data.
+[36mi[39m Specify the column types or set [38;5;235m[48;5;253m[38;5;235m[48;5;253m`show_col_types = FALSE`[48;5;253m[38;5;235m[49m[39m to quiet this message.
+"

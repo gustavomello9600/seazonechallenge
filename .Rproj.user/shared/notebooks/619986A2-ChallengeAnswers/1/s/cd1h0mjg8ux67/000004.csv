@@ -1,0 +1,7 @@
+"0","advances.by.year <- ny.nights %>%"
+"0","  group_by(year) %>%"
+"0","  summarise(ten=advance[which(percentage_until >= 0.1)][1],"
+"0","            fifty=advance[which(percentage_until >= 0.5)][1],"
+"0","            eighty=advance[which(percentage_until >= 0.8)][1])"
+"0",""
+"0","advances.by.year"

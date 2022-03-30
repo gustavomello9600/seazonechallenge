@@ -1,0 +1,7 @@
+"0",""
+"0","revenue.by.year %>%"
+"0","  mutate(year=year-2019) %>%"
+"0","  ggplot(aes(x=year, y=total, label=format(total, digits=2))) +"
+"0","  geom_col() +"
+"0","  geom_text(vjust=-0.5) +"
+"0","  geom_smooth(method = ""lm"", formula = y ~ exp(x))"
