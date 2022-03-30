@@ -62,11 +62,17 @@ Run the R code from each file in the following order:
 
 ## Bibliography
 CHEN, Tianqi; GUESTRIN, Carlos. **Xgboost: A scalable tree boosting system**. In: Proceedings of the 22nd acm sigkdd international conference on knowledge discovery and data mining. 2016. p. 785-794.
+
 FIORI, Anna Maria; FORONI, Ilaria. Prediction accuracy for reservation-based forecasting methods applied in revenue management. **International Journal of Hospitality Management**, v. 84, p. 102332, 2020.
+
 GUIZZARDI, Andrea; PONS, Flavio Maria Emanuele; RANIERI, Ercolino. Advance booking and hotel price variability online: Any opportunity for business customers?. **International Journal of Hospitality Management**, v. 64, p. 85-93, 2017.
+
 HASTIE, Trevor et al. **The elements of statistical learning: data mining, inference, and prediction**. New York: springer, 2009.
+
 HYNDMAN, Rob J.; ATHANASOPOULOS, George. **Forecasting: principles and practice**. OTexts, 2018.
+
 LAZZERI, Francesca. **Machine learning for time series forecasting with Python**. John Wiley & Sons, 2020.
+
 YOUNG, Peter C.; PEDREGAL, Diego J.; TYCH, Wlodek. Dynamic harmonic regression. **Journal of forecasting**, v. 18, n. 6, p. 369-394, 1999.
 
 
